@@ -1,11 +1,12 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -Wall #-}
+--{-# OPTIONS_GHC -Wall #-}
 
 module MyProj
     ( runMyProj
     ) where
 
---type CurrentPos = (Int, Int) --номер Quad-а, позиция в Quad-е (1..9)
+import Data.List
+
+type CurrentPos = (Int, Int) --номер Quad-а, позиция в Quad-е (1..9)
 
 data Cell = Cell { value :: Maybe Int
                  } deriving Show
@@ -25,11 +26,20 @@ printQuad (Quad {cells = l}) = print (map parseCell l)
       parseCell (Cell {value = Just x}) = x
       parseCell (Cell {value = Nothing}) = 0
 
-printTable :: Table -> IO ()
+printTable :: Table -> IO () --вывод каждого квадрата в одной строке
 printTable (Table {content = []}) = putStr ""
-printTable (Table {content = (quad:other)}) = do
+printTable (Table {content = (quad : other)}) = do
   printQuad quad
   printTable (Table {content = other})
+
+printFullTable :: Table -> IO () --адекватно выводит полностью заполненные таблицы
+printFullTable tab = printLines (getLines tab)
+
+printLines :: [[Int]] -> IO () 
+printLines [] = putStr ""
+printLines (line : other) = do 
+  print line
+  printLines other
 
 tableExample :: Table 
 tableExample = 
@@ -41,7 +51,7 @@ tableExample =
                      , createQuad [2,7,8,1,3,9,4,6,5]
                      , createQuad [1,6,2,5,7,4,8,9,3]
                      , createQuad [3,5,9,6,8,2,7,4,1]
-                     , createQuad [8,4,7,3,9,1,5,2,6] 
+                     , createQuad [8,4,7,3,9,1,5,2,6]
                      ]
           }
 
@@ -53,8 +63,10 @@ getQuades (Table {content = quads}) = map parseQuad quads
     parseQuad (Quad {cells = (Cell Nothing : other)}) = parseQuad (Quad {cells = other}) --незаполненные клетки просто пропускаем
 
 getLines :: Table -> [[Int]]
-getLines (Table {content = []}) = [[]]
-getLines (Table {content = (quad1:quad2:quad3:other)}) = quadsToLines quad1 quad2 quad3 ++ getLines (Table {content = other})
+getLines tab = transpose (transpose (getLines1 tab)) --так нужно для дебаггинга
+  where
+    getLines1 (Table {content = []}) = [[]]
+    getLines1 (Table {content = (quad1:quad2:quad3:other)}) = quadsToLines quad1 quad2 quad3 ++ getLines (Table {content = other})
 
 parseCells :: [Cell] -> [Int] --оставляет только числа, "пустышки" выкидывает
 parseCells [] = []
@@ -64,21 +76,36 @@ parseCells (Cell (Just x) : other) = x : parseCells other
 quadsToLines :: Quad -> Quad -> Quad -> [[Int]] --берет 3 квадрата одной линии, выдает 3 соответствущих строки в виде клеток
 quadsToLines (Quad {cells = []}) _ _ = [[]] --когда прошли 3 раза
 quadsToLines (Quad {cells = (x1:y1:z1:l1)}) (Quad {cells = (x2:y2:z2:l2)}) (Quad {cells = (x3:y3:z3:l3)}) = 
-  [parseCells((x1:y1:z1:[]) ++ (x2:y2:z2:[]) ++ (x3:y3:z3:[]))] ++ quadsToLines (Quad {cells = l1}) (Quad {cells = l2}) (Quad {cells = l3})
+  [parseCells ((x1:y1:z1:[]) ++ (x2:y2:z2:[]) ++ (x3:y3:z3:[]))] ++ quadsToLines (Quad {cells = l1}) (Quad {cells = l2}) (Quad {cells = l3})
 
---getColumns :: Table -> [[Int]] --надо юзать !!1 !!4 !!7 ?
+getColumns :: Table -> [[Int]]
+getColumns tab = transpose (getLines tab)
 
---isFull :: Table -> Bool --проверяет, заполнена ли таблица полностью
+isDifferent :: [Int] -> Bool --True, если все числа в списке разные
+isDifferent [] = True
+isDifferent (x : other)|x `elem` other = False --повтоение точно есть
+                       | otherwise = isDifferent other
 
---isCorrect :: Table -> Bool --проверяет, правильное ли заполнение у таблицы
--- map isDifferent getQuades
+isCorrect :: Table -> Bool --проверяет, правильное ли заполнение у таблицы
+isCorrect tab = correctColumns && (correctLines && correctQuades)
+  where
+    correctQuades = and (map isDifferent (getQuades tab))
+    correctLines = and (map isDifferent (getLines tab))
+    correctColumns = and (map isDifferent (getColumns tab))
 
---isDifferent :: [Int] -> Bool --True, если все числа в списке разные
+isFull :: Table -> Bool --проверяет, заполнена ли таблица полностью
+isFull table | sumLength == 81 = True
+             | otherwise = False
+  where
+    sumLength = sum (map length (getQuades table))
 
---getTable :: FilePath -> Table (или как-то еще похоже)
+--getTable :: FilePath -> Table --считывает числа, записанные по кваадратам из файла
+
+--putValue :: Table -> currentPos -> Int -> Table --находит нужную клетку и добавляет/заменяет значение
+
+--showTable :: Table -> Picture --рисует на экране введенные клетки
 
 runMyProj :: IO ()
 runMyProj = do
   putStrLn "[running MyProj]"
-  --printTable (Table {content = [(createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9]), (createQuad [1..9])]})
-  print (quadsToLines (createQuad [1..9]) (createQuad [1..9]) (createQuad [1..9]))
+  print (isCorrect tableExample)
