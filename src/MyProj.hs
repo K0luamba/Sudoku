@@ -1,10 +1,15 @@
 --{-# OPTIONS_GHC -Wall #-}
 
+--TODO сделать проверку ошибки в файле на этапе создания ячейки; сделать изменение значения по уменьшению индекса квадрата, потом ячейки (до 1?)
+
 module MyProj
     ( runMyProj
     ) where
 
 import Data.List
+import System.IO
+
+-- типы данных --
 
 type CurrentPos = (Int, Int) --номер Quad-а, позиция в Quad-е (1..9)
 
@@ -16,6 +21,27 @@ data Quad = Quad { cells :: [Cell] --9 ячеек
 
 data Table = Table { content :: [Quad] --9 квадратов
                    } deriving Show
+
+-- константы --
+
+configPath :: FilePath
+configPath = "config.txt"
+
+tableExample :: Table 
+tableExample = 
+    Table {content = [ createQuad [2,3,8,7,5,9,4,1,6]
+                     , createQuad [9,6,5,4,1,3,2,7,8]
+                     , createQuad [7,1,4,6,8,2,9,5,3]
+                     , createQuad [9,4,5,6,8,7,3,2,1]
+                     , createQuad [1,3,6,5,2,4,8,9,7]
+                     , createQuad [2,7,8,1,3,9,4,6,5]
+                     , createQuad [1,6,2,5,7,4,8,9,3]
+                     , createQuad [3,5,9,6,8,2,7,4,1]
+                     , createQuad [8,4,7,3,9,1,5,2,6]
+                     ]
+          }
+
+-- функционал --
 
 createQuad :: [Int] -> Quad --для быстрого ввода программистом|для чтения из файла
 createQuad numbers = Quad {cells = map (\x -> Cell {value = Just x}) numbers}
@@ -40,20 +66,6 @@ printLines [] = putStr ""
 printLines (line : other) = do 
   print line
   printLines other
-
-tableExample :: Table 
-tableExample = 
-    Table {content = [ createQuad [2,3,8,7,5,9,4,1,6]
-                     , createQuad [9,6,5,4,1,3,2,7,8]
-                     , createQuad [7,1,4,6,8,2,9,5,3]
-                     , createQuad [9,4,5,6,8,7,3,2,1]
-                     , createQuad [1,3,6,5,2,4,8,9,7]
-                     , createQuad [2,7,8,1,3,9,4,6,5]
-                     , createQuad [1,6,2,5,7,4,8,9,3]
-                     , createQuad [3,5,9,6,8,2,7,4,1]
-                     , createQuad [8,4,7,3,9,1,5,2,6]
-                     ]
-          }
 
 getQuades :: Table -> [[Int]]
 getQuades (Table {content = quads}) = map parseQuad quads
@@ -101,6 +113,18 @@ isFull table | sumLength == 81 = True
 
 --getTable :: FilePath -> Table --считывает числа, записанные по кваадратам из файла
 
+readCell :: String -> Cell --одно поле таблицы -> одна ячейка
+readCell "_" = Cell Nothing
+readCell s = Cell (Just (read s))
+
+readCells :: String -> [[Cell]] --содержание файла -> все клетки по квадратам
+readCells = map (map readCell . words) . lines
+
+parseFile :: String -> Table
+parseFile str = (Table {content = map createQuad1 (readCells str)})
+  where
+    createQuad1 cellList = (Quad {cells = cellList})
+
 --putValue :: Table -> currentPos -> Int -> Table --находит нужную клетку и добавляет/заменяет значение
 
 --showTable :: Table -> Picture --рисует на экране введенные клетки
@@ -108,4 +132,5 @@ isFull table | sumLength == 81 = True
 runMyProj :: IO ()
 runMyProj = do
   putStrLn "[running MyProj]"
-  print (isCorrect tableExample)
+  fileContent <- readFile configPath --не чистая функция
+  printFullTable(parseFile fileContent)
