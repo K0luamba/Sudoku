@@ -1,4 +1,5 @@
 --{-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module MyProj
     ( runMyProj
@@ -7,22 +8,27 @@ module MyProj
 import Data.List
 import System.IO
 import Graphics.Gloss.Interface.Pure.Game
+import Debug.Trace
 
 -- типы данных --
 
-type Position  = (Int, Int) --номер Quad-а, позиция в Quad-е (1..9)
+type TablePos  = (Int, Int) --номер Quad-а, позиция в Quad-е (1..9)
 
 data Cell = Cell { value :: Maybe Int
                  } deriving Show
 
-data Quad = Quad { cells :: [Cell] --9 ячеек
+data Quad = Quad { cells :: [Cell] 
                  } deriving Show
 
-data Table = Table { content :: [Quad] --9 квадратов
+data Table = Table { content :: [Quad] 
                    } deriving Show
 
 data GameState = GameState { gameTable :: Table
-                           , markPos :: (Int, Int)
+                           , markPos :: (Int, Int) --frontend
+                           , currentPos :: TablePos --backend
+                           , gameOver :: Bool
+                           , haveError :: Bool
+                           , errorPos :: (Int, Int)
                            } deriving Show
 
 -- константы --
@@ -63,7 +69,7 @@ fieldSize@(fieldWidth, fieldHeight) = (9, 9) :: (Int, Int)
 createQuad :: [Int] -> Quad --для быстрого ввода программистом|для чтения из файла
 createQuad numbers = Quad {cells = map (\x -> Cell {value = Just x}) numbers}
 
-printQuad :: Quad -> IO () --для удобной проверки данных через консоль
+printQuad :: Quad -> IO ()
 printQuad (Quad {cells = l}) = print (map parseCell l) 
     where
       parseCell (Cell {value = Just x}) = x
@@ -156,17 +162,18 @@ checkValues tab = and (map isDigits (getQuades tab))
 checkSize :: Table -> Bool --проверяет, что таблица получилась 9x9
 checkSize tab = (and (map (\l -> length l == 9) (getQuades tab))) && (length (getQuades tab) == 9)
 
-putValue :: Table -> Position  -> Int -> Table --находит нужную клетку и добавляет/заменяет значение
+putValue :: Table -> TablePos  -> Int -> Table --находит нужную клетку и добавляет/заменяет/удаляет значение
 putValue (Table {content = quads}) pos x = (Table {content = (putValueInQuades quads pos x)})
 
-putValueInQuades :: [Quad] -> Position  -> Int -> [Quad]
+putValueInQuades :: [Quad] -> TablePos  -> Int -> [Quad]
 --переходим на этап изменения текущего квадрата | идем дальше
 putValueInQuades ( (Quad {cells = cellList}) : other) (quadNum, cellNum) x | quadNum == 1 = (Quad {cells = putValueInCells  cellList cellNum x}) : other 
                                                                            | otherwise = (Quad {cells = cellList}) : putValueInQuades other (quadNum - 1, cellNum) x
 putValueInQuades [] _ _ = [] --если вдруг индекс квадрата вне [1..9], но сюда попадать не должны
 
 putValueInCells :: [Cell] -> Int -> Int -> [Cell]
-putValueInCells (first : other) pos x | pos == 1 = (Cell {value = Just x}) : other
+putValueInCells (first : other) pos x | pos == 1 = if x == 0 then (Cell {value = Nothing}) : other
+                                                             else (Cell {value = Just x}) : other
                                       | otherwise = first : putValueInCells other (pos - 1) x
 putValueInCells [] _ _ = [] 
 
@@ -174,7 +181,8 @@ cellToScreen :: (Int, Int) -> (Float, Float) --для перевода номе�
 cellToScreen (x, y) = ((fromIntegral x) * cellSize, (fromIntegral y) * cellSize) 
 
 drawGame :: GameState -> Picture
-drawGame GameState {gameTable = tab, markPos = (x, y)} = pictures ( (showCells tab) ++ grid ++ (mark x y) )
+drawGame GameState {gameTable = tab, markPos = (x, y), gameOver = state, haveError = err, errorPos = (xe, ye)} = 
+  pictures ( (showCells tab) ++ grid ++ (mark x y) ++ (errorMark err xe ye) ++ (winLabel state) )
 
 grid :: [Picture] --черная сетка поверх отрисованных клеток
 --проход по всем координатам клеток, для каждой контур квадрата (uncurry :: (a -> b -> c) -> (a,b) -> c)
@@ -206,11 +214,79 @@ getValueInLine (x : other) index | index == 0 = x
                                  | otherwise = getValueInLine other (index - 1)
 getValueInLine [] _ = 0 
 
+winLabel :: Bool -> [Picture]
+winLabel state | state == True = [translate (-120) (cellSize * (fromIntegral fieldHeight)) (label "Sudoku is solved, congratulations!")]
+               | otherwise = [Blank]
+  where label s = (scale 0.2 0.2 (color orange (text s)))
+               
+errorMark :: Bool -> Int -> Int -> [Picture]
+errorMark state x y | state == True = [uncurry translate (cellToScreen (x, y)) (color red (rectangleWire cellSize cellSize)), errorLabel]
+                    | otherwise = [Blank]
+  where
+    errorLabel = translate (-40) (cellSize * (fromIntegral fieldHeight)) (scale 0.2 0.2 (color red (text "Firstly, fix this error!")))
+
 handleEvent :: Event -> GameState -> GameState --определеяет движение "маркера" и смену значений
+handleEvent _ game@GameState {gameOver = True} = game --блокировка действий после окончания игры
+handleEvent (EventKey (SpecialKey KeyRight) Down _ _) game@GameState {markPos = (x, y), currentPos = (q, p), haveError = False} --при ошибке блокируем перемещение
+    | x < 8 = game {markPos = (x + 1, y), currentPos = moveR (q, p)}
+    | otherwise = game {markPos = (0, y), currentPos = moveR (q, p)}
+handleEvent (EventKey (SpecialKey KeyLeft) Down _ _) game@GameState {markPos = (x, y), currentPos = (q, p), haveError = False}
+    | x > 0 = game {markPos = (x - 1, y), currentPos = moveL (q, p)}
+    | otherwise = game {markPos = (8, y), currentPos = moveL (q, p)}
+handleEvent (EventKey (SpecialKey KeyUp) Down _ _) game@GameState {markPos = (x, y), currentPos = (q, p), haveError = False}
+    | y < 8 = game {markPos = (x, y + 1), currentPos = moveU (q, p)}
+    | otherwise = game {markPos = (x, 0), currentPos = moveU (q, p)}
+handleEvent (EventKey (SpecialKey KeyDown) Down _ _) game@GameState {markPos = (x, y), currentPos = (q, p), haveError = False}
+    | y > 0 = game {markPos = (x, y - 1), currentPos = moveD (q, p)}
+    | otherwise = game {markPos = (x, 8), currentPos = moveD (q, p)}
+handleEvent (EventKey (Char '0') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 0}
+handleEvent (EventKey (Char '1') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 1}
+handleEvent (EventKey (Char '2') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 2}
+handleEvent (EventKey (Char '3') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 3}
+handleEvent (EventKey (Char '4') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 4}
+handleEvent (EventKey (Char '5') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 5}
+handleEvent (EventKey (Char '6') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 6}
+handleEvent (EventKey (Char '7') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 7}
+handleEvent (EventKey (Char '8') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 8}
+handleEvent (EventKey (Char '9') Down _ _) game@GameState {gameTable = tab, currentPos = pos} = game {gameTable = putValue tab pos 9}
 handleEvent _ e = e
 
-update :: Float -> GameState -> GameState --ничего не меняет
-update _ = id
+--4 функции для преобразования координат квадратов при движении "маркера"
+moveR :: TablePos -> TablePos
+moveR (q, p) | (p == 3) || (p == 6) || (p == 9) = (right q, p - 2) --переход между квадратами
+             | otherwise = (q, p + 1) --сдвиг в рамках квадрата
+  where
+    right q | (q == 3) || (q == 6) || (q == 9) = q - 2
+            | otherwise = q + 1
+
+moveL :: TablePos -> TablePos
+moveL (q, p) | (p == 1) || (p == 4) || (p == 7) = (left q, p + 2) 
+             | otherwise = (q, p - 1)
+  where
+    left q | (q == 1) || (q == 4) || (q == 7) = q + 2
+           | otherwise = q - 1
+
+moveU :: TablePos -> TablePos
+moveU (q, p) | (p == 1) || (p == 2) || (p == 3) = (up q, p + 6) 
+             | otherwise = (q, p - 3)
+  where
+    up q | (q == 1) || (q == 2) || (q == 3) = q + 6
+         | otherwise = q - 3
+
+moveD :: TablePos -> TablePos
+moveD (q, p) | (p == 7) || (p == 8) || (p == 9) = (down q, p - 6) --переход между квадратами
+             | otherwise = (q, p + 3) --сдвиг в рамках квадрата
+  where
+    down q | (q == 7) || (q == 8) || (q == 9) = q - 6
+           | otherwise = q + 3
+
+update :: Float -> GameState -> GameState 
+update _ game@GameState {gameTable = tab, markPos = pos, haveError = err} | (err == False) && (isCorrect tab == False) = game {haveError = True, errorPos = pos}
+                                                                          | (err == True) && (isCorrect tab == True) = game {haveError = False}
+                                                                          | otherwise = game {gameOver = solved tab}
+
+solved :: Table -> Bool 
+solved tab = (isFull tab) && (isCorrect tab)
 
 -- точка входа --
 runMyProj :: IO ()
@@ -224,8 +300,6 @@ runMyProj = do
       True -> let tab = parseFile fileContent
         in do
           printTable tab
-          print (isFull tab)
-          print (isCorrect tab)
-          let initState = GameState {gameTable = tab, markPos = (1, 4)}
+          let initState = GameState {gameTable = tab, markPos = (0, 0), currentPos = (7, 7), gameOver = False, haveError = False, errorPos = (0,0)}
           play display bgColor stepsPerSecond initState drawGame handleEvent update
 
