@@ -21,4 +21,5 @@ data GameState = GameState { inGame :: Bool
                            , haveError :: Bool
                            , errorPos :: (Int, Int)
                            , levels :: [Table]
+                           , needHint :: Bool
                            } deriving Show

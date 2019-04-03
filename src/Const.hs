@@ -1,6 +1,8 @@
 module Const where
 
 import Graphics.Gloss.Interface.Pure.Game
+import Types
+import Backend (createQuad)
 
 -- константы --
 
@@ -13,7 +15,7 @@ configPath2 = "config2.txt"
 configPath3 :: FilePath
 configPath3 = "config3.txt"
 
-{-tableExample :: Table 
+tableExample :: Table 
 tableExample = 
     Table {content = [ createQuad [2,3,8,7,5,9,4,1,6]
                      , createQuad [9,6,5,4,1,3,2,7,8]
@@ -25,7 +27,7 @@ tableExample =
                      , createQuad [3,5,9,6,8,2,7,4,1]
                      , createQuad [8,4,7,3,9,1,5,2,6]
                      ]
-          } -}
+          }
 
 display :: Display --по сути определение размеров экрана
 display = FullScreen

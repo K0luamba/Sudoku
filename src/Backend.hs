@@ -161,3 +161,22 @@ moveD (q, p) | (p == 7) || (p == 8) || (p == 9) = (down q, p - 6) --перехо
            
 solved :: Table -> Bool 
 solved tab = (isFull tab) && (isCorrect tab)
+
+--возвращает, какие значения могут стоять в данной клетке
+possible :: Table -> TablePos -> [Int]
+possible tab pos = possible1 tab pos [1 .. 9] 
+
+--непосредственно осуществляет перебор оставшихся значений
+possible1 :: Table -> TablePos -> [Int] -> [Int]
+possible1 _ _ [] = []
+possible1 tab pos (first : other) | canPut tab pos first == True = first : possible1 tab pos other
+                                  | otherwise = possible1 tab pos other
+
+--True, если вставить число на данную позицию таблицы
+canPut :: Table -> TablePos -> Int -> Bool
+canPut tab pos val = isCorrect (putValue tab pos val)
+
+
+
+
+

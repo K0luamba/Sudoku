@@ -4,7 +4,7 @@ import Graphics.Gloss.Interface.Pure.Game
 
 import Types
 import Const
-import Backend (getValue)
+import Backend (getValue, possible)
 
 -- объекты --
 
@@ -52,9 +52,19 @@ errorMark state x y | state == True = [uncurry translate (cellToScreen (x, y)) (
     errorLabel = translate (-40) fieldLength (scale 0.2 0.2 (color red (text "Firstly, fix this error!")))
 
 guide :: [Picture]
-guide = [hint1, hint2, hint3]
+guide = [hint1, hint2, hint3, hint4]
   where 
     hint1 = translate fieldLength (fieldLength - 50) (label "Use arrows to move input field.")
     hint2 = translate fieldLength (fieldLength - 100) (label "Press 0 to delete number in cell.")
     hint3 = translate fieldLength (fieldLength - 150) (label "Press R to return to the menu.")
+    hint4 = translate fieldLength (fieldLength - 200) (label "Press H to show the hint.")
     label s = (scale 0.15 0.15 (color (makeColorI 10 20 100 255) (text s)))
+    
+hint :: Bool -> Table -> TablePos -> [Picture]
+hint False _ _ = [Blank]
+hint True tab pos | variants == [] = [translate (-10) (-50) (label1 "No variants of correct numbers, make some steps back.")]
+                  | otherwise = [translate (-10) (-50) (label ("You can put here these numbers: " ++ (show variants) ++ "."))]
+  where
+    label s = (scale 0.15 0.15 (color (makeColorI 10 30 100 255) (text s)))
+    label1 s = (scale 0.14 0.14 (color red (text s)))
+    variants = possible tab pos
